@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"github.com/hashicorp/terraform-provider-vault/internal/provider"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 
@@ -27,6 +30,10 @@ func TestAccKVSecret(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "data.zip", "zap"),
 					resource.TestCheckResourceAttr(resourceName, "data.foo", "bar"),
 				),
+			},
+			{
+				Config: testKVSecretConfig_basic(mount, name),
+				Check:  testResourceKVSecret_apiAcessCheck,
 			},
 			{
 				Config: testKVSecretConfig_updated(mount, name),
@@ -96,4 +103,27 @@ resource "vault_kv_secret" "test" {
 }`, name)
 
 	return ret
+}
+
+func testResourceKVSecret_apiAcessCheck(s *terraform.State) error {
+	resourceState := s.Modules[0].Resources["vault_kv_secret.test"]
+	state := resourceState.Primary
+
+	path := state.ID
+
+	client, err := provider.GetClient(state, testProvider.Meta())
+	if err != nil {
+		return err
+	}
+
+	secret, err := client.Logical().Read(path)
+	if err != nil {
+		return fmt.Errorf("error reading back secret: %s", err)
+	}
+
+	if got, want := secret.Data["zip"], "zoo"; got != want {
+		return fmt.Errorf("'zip' data is %q; want %q", got, want)
+	}
+
+	return nil
 }
